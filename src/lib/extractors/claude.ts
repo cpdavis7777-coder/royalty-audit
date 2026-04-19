@@ -38,15 +38,18 @@ export class ClaudeExtractor implements VisionExtractor {
         ];
 
     const response = await this.client.messages.create({
-      model: "claude-sonnet-4-5",
+      model: "claude-sonnet-4-6",
       max_tokens: 1024,
       system: EXTRACTION_PROMPT,
       messages: [{ role: "user", content }],
     });
 
-    return response.content
+    const raw = response.content
       .filter((b): b is Anthropic.Messages.TextBlock => b.type === "text")
       .map((b) => b.text)
       .join("");
+
+    // Strip markdown code fences Claude sometimes adds despite prompt instructions
+    return raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
   }
 }

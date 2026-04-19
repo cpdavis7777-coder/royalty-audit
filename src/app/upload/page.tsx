@@ -8,13 +8,20 @@ import { type Extraction } from "@/types/extraction";
 type Status = "idle" | "uploading" | "success" | "error";
 
 function friendlyError(serverMsg: string): string {
-  if (!serverMsg || serverMsg.toLowerCase().includes("internal server error")) {
+  const m = serverMsg.toLowerCase();
+  if (!serverMsg || m.includes("internal server error")) {
     return "We couldn't process this file. It may be low-resolution, password-protected, or in an unsupported format. Try a clear JPG or PNG scan.";
   }
-  if (serverMsg.toLowerCase().includes("unsupported file type")) {
+  if (m.includes("429") || m.includes("too many requests") || m.includes("quota") || m.includes("rate limit")) {
+    return "Our extraction service is temporarily at capacity. Please try again in a minute.";
+  }
+  if (m.includes("credit balance") || m.includes("billing") || m.includes("upgrade")) {
+    return "Our extraction service is temporarily unavailable. Please try again shortly.";
+  }
+  if (m.includes("unsupported file type")) {
     return serverMsg;
   }
-  if (serverMsg.toLowerCase().includes("non-json") || serverMsg.toLowerCase().includes("schema")) {
+  if (m.includes("non-json") || m.includes("schema")) {
     return "We couldn't extract recognizable fields from this file. Make sure it's a royalty check stub — blurry or low-resolution files may not work.";
   }
   return "We couldn't process this file. Please try a clearer image or a different format.";
@@ -65,7 +72,9 @@ export default function UploadPage() {
       const json = await res.json();
 
       if (!res.ok) {
-        setErrorMsg(friendlyError(json.error ?? ""));
+        const isDev = process.env.NODE_ENV === "development";
+        const detail = json.detail as string | undefined;
+        setErrorMsg(isDev && detail ? detail : friendlyError(json.error ?? ""));
         setStatus("error");
         return;
       }
