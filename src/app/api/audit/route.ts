@@ -111,9 +111,35 @@ async function generateNarrative(
 
   const mathNote = mathOk
     ? `PASSES — sum of line items ($${sumOwnerNet.toFixed(2)}) matches check amount ($${extraction.net_check_amount.toFixed(2)}) within rounding.`
-    : `FAILS — sum of line items ($${sumOwnerNet.toFixed(2)}) differs from check amount ($${extraction.net_check_amount.toFixed(2)}) by $${Math.abs(mathVariance).toFixed(2)}. This likely indicates a missing line item or an extraction imprecision — NOT necessarily a payment error.`;
+    : `FAILS — sum of line items ($${sumOwnerNet.toFixed(2)}) differs from check amount ($${extraction.net_check_amount.toFixed(2)}) by $${Math.abs(mathVariance).toFixed(2)}. Most likely cause: a line item was missed during extraction (not a payment error). User should count rows on the original stub.`;
 
-  const prompt = `Generate a royalty audit report for the following stub. Be conservative and accurate — only reference numbers explicitly provided below. Do not calculate or invent additional figures.
+  // Build explicit anomaly flags — only genuine outliers, not normal industry practices
+  const anomalyFlags: string[] = [];
+  for (const r of results) {
+    if (r.wellheadDifferentialPct !== null) {
+      if (r.wellheadDifferentialPct > 60) {
+        anomalyFlags.push(
+          `${r.item.production_month} ${r.item.product_type}: operator price is ${r.wellheadDifferentialPct.toFixed(1)}% below EIA benchmark — larger than typical (>60%). Worth asking the operator for a pricing statement.`
+        );
+      } else if (r.wellheadDifferentialPct < 0) {
+        anomalyFlags.push(
+          `${r.item.production_month} ${r.item.product_type}: stub price ($${r.item.price_per_unit.toFixed(2)}) is ABOVE the EIA benchmark ($${r.eiaPrice!.toFixed(2)}) — this is unusual and may indicate a data extraction error or an uncommonly favorable sale.`
+        );
+      }
+    }
+    if (!r.lineItemMathOk && Math.abs(r.lineItemMathVariance) > 1.0) {
+      anomalyFlags.push(
+        `${r.item.production_month} ${r.item.product_type}: line internal math (gross − deductions − taxes) is off by $${r.lineItemMathVariance.toFixed(2)}. Possible extraction imprecision — user should verify this row on the original stub.`
+      );
+    }
+  }
+
+  const anomalySection =
+    anomalyFlags.length > 0
+      ? `GENUINE ANOMALIES TO REPORT (only these — do not invent others):\n${anomalyFlags.map((f) => `  ! ${f}`).join("\n")}`
+      : `NO ANOMALIES — All differentials are within the normal 10–55% wellhead range and line math checks out. Do NOT manufacture warnings or flag normal differentials.`;
+
+  const prompt = `Generate a royalty audit report. Only reference numbers explicitly provided below — do not calculate or invent additional figures.
 
 STUB OVERVIEW:
 - Operator: ${extraction.operator_name || "(not extracted)"}
@@ -123,32 +149,36 @@ STUB OVERVIEW:
 - Total Net Check: $${extraction.net_check_amount.toFixed(2)}
 - Line Items Extracted: ${extraction.line_items.length}
 
-LINE ITEMS (with EIA benchmark comparison):
+LINE ITEMS WITH EIA BENCHMARK CONTEXT:
 ${lineRows}
 
-MATH CHECK:
+STUB MATH CHECK:
 ${mathNote}
 
-IMPORTANT CONTEXT FOR THE REPORT:
-1. Wellhead price discounts of 20–45% below WTI (for oil) or Henry Hub (for gas) are NORMAL. Operators pay the wellhead price, not the exchange benchmark. Do NOT flag a normal differential as an underpayment.
-2. If the math check passes, the payment is mathematically consistent with the stub.
-3. If a field appears anomalous (e.g. price seems very low or very high for the basin), note it as something to "verify with the operator" — not as evidence of wrongdoing.
-4. Trust the numbers the user has provided. Do not invent contradictions or call the stub "inconsistent."
-5. Next steps should be neutral and investigative, not alarmist. Only suggest contacting an attorney for clear systematic errors, not for normal price differentials.
+${anomalySection}
+
+RULES FOR THIS REPORT:
+- A wellhead price discount of 10–55% below WTI or Henry Hub is completely normal. Do NOT flag it as suspicious.
+- The math check result is definitive for whether the numbers add up. Trust it.
+- If there are no anomaly flags above, the report should be reassuring, not cautionary.
+- Do not reference specific dollar amounts that are not in the data above.
+- "Next Steps" should be proportionate: normal checks → routine record-keeping. Anomaly flagged → ask operator for supporting document.
+- Never recommend attorneys or formal demand letters in a first-pass audit.
 
 Write the report with EXACTLY these four sections:
 
 ## Summary
-2–3 sentences. State whether the stub math checks out, and whether the prices paid are within a normal wellhead range. Be direct and neutral.
+2–3 sentences. Lead with the math check result. Then say whether the stub prices are within a normal wellhead range. Conclude with the overall picture. Be direct and neutral — do not hedge everything with "may" or "might" when the data is clear.
 
 ## Line Item Breakdown
-For each line item: the product, volume, price paid, EIA benchmark (if available), and the wellhead differential. Explain in one sentence that wellhead prices are always lower than exchange benchmarks due to transportation, quality, and location adjustments.
+List each line item with the key numbers: product, volume, price paid, EIA benchmark, and the wellhead differential in plain English (e.g. "Operator paid $55.15/bbl vs. EIA WTI $91.38/bbl — a $36.23 wellhead discount, which is within the normal 20–40% range for Permian crude").
 
 ## Variance Analysis
-Explain any meaningful differences. If the math check passes and differentials are normal (15–50% below benchmark), say so clearly — this is not a red flag. If something is genuinely outside normal range, describe it neutrally as "worth a follow-up."
+If the math check passes and no anomalies are flagged: explain clearly that the payment appears mathematically correct and the price differentials are normal. Describe the most common reasons for wellhead discounts (transportation tariffs, quality adjustments, marketing fees, geographic basis differentials) in 2–3 sentences.
+If anomalies were flagged: address only those specific anomalies. Do not fabricate additional concerns.
 
 ## Next Steps
-2–3 specific, proportionate actions. If everything looks normal: suggest confirming decimal interest on the division order and tracking next month's prices. If there's an anomaly: suggest requesting a pricing statement or run ticket from the operator. Do NOT recommend attorneys, demand letters, or formal audits unless there is a clear systematic error.`;
+2–3 specific, proportionate actions based on the findings above. Calibrate to what was actually found — do not copy-paste generic escalation advice.`;
 
   const message = await client.messages.create({
     model: "claude-sonnet-4-6",
