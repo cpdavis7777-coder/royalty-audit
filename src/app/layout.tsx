@@ -15,7 +15,7 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "Derrick — Royalty Audit",
+  title: "True Barrel — Royalty Audit",
   description:
     "Upload your royalty check stub and find out if you're being paid what you're owed. Plain-English audit reports powered by public production data.",
 };
@@ -31,8 +31,8 @@ export default function RootLayout({
         <Nav />
         <main>{children}</main>
         <footer className="border-t border-border mt-24 py-8 text-center text-sm text-muted-foreground">
-          <p>Derrick is informational only — not legal or financial advice.</p>
-          <p className="mt-1">© {new Date().getFullYear()} Derrick Royalty Audit</p>
+          <p>True Barrel is informational only — not legal or financial advice.</p>
+          <p className="mt-1">© {new Date().getFullYear()} True Barrel Royalty Audit</p>
         </footer>
       </body>
     </html>

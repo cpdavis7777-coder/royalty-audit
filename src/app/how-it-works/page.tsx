@@ -6,13 +6,13 @@ const steps = [
     n: "01",
     title: "You upload a check stub",
     detail:
-      "We accept PDF or image files (JPG, PNG, HEIC). The file is sent directly to Claude Vision for extraction — we don't store it on our servers.",
+      "We accept PDF or image files (JPG, PNG, HEIC). The file is sent directly to our extraction engine — we don't store it on our servers.",
   },
   {
     n: "02",
-    title: "Claude Vision extracts the fields",
+    title: "Our engine extracts the fields",
     detail:
-      "Our AI reads your check stub and pulls out: operator name, well name, API number, production month, decimal interest, net volume, product type, gross value, deductions, and net check amount.",
+      "Our extraction engine reads your check stub and pulls out: operator name, well name, API number, production month, decimal interest, net volume, product type, gross value, deductions, and net check amount.",
   },
   {
     n: "03",
@@ -52,7 +52,7 @@ export default function HowItWorks() {
     <div className="max-w-4xl mx-auto px-6 py-16">
       <div className="text-center mb-14">
         <Badge className="mb-4 bg-primary/20 text-primary border-primary/30">Methodology</Badge>
-        <h1 className="text-4xl font-bold tracking-tight mb-4">How Derrick works</h1>
+        <h1 className="text-4xl font-bold tracking-tight mb-4">How True Barrel works</h1>
         <p className="text-muted-foreground text-lg">
           Every step is grounded in public data. No black boxes.
         </p>

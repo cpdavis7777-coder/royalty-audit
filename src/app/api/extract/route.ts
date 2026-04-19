@@ -51,7 +51,9 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ data: validated.data });
   } catch (err) {
-    console.error("[/api/extract]", err);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    const error = err as Error;
+    console.error("[/api/extract] Extraction failed:", error.message);
+    console.error("[/api/extract] Stack:", error.stack ?? "(no stack)");
+    return NextResponse.json({ error: "Internal server error", detail: error.message }, { status: 500 });
   }
 }

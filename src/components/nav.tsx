@@ -16,7 +16,7 @@ export function Nav() {
     <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-50">
       <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2">
-          <span className="text-primary font-bold text-xl tracking-tight">Derrick</span>
+          <span className="text-primary font-bold text-xl tracking-tight">True Barrel</span>
           <span className="text-muted-foreground text-sm hidden sm:block">Royalty Audit</span>
         </Link>
         <nav className="flex items-center gap-6">

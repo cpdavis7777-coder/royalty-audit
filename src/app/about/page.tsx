@@ -24,7 +24,7 @@ export default function About() {
           owners never bother — even when underpayments are systematic and recoverable.
         </p>
         <p>
-          Derrick exists to level the information playing field. The data is all public. The math
+          True Barrel exists to level the information playing field. The data is all public. The math
           isn&apos;t complicated. What was missing was a tool that could read a check stub, fetch the
           right production records, and explain the difference in plain English.
         </p>
@@ -37,7 +37,7 @@ export default function About() {
         <CardContent className="pt-6">
           <h2 className="text-lg font-bold mb-3 text-foreground">Legal disclaimer</h2>
           <p className="text-sm text-muted-foreground leading-relaxed">
-            Derrick is an informational tool only. Nothing on this site constitutes legal, financial,
+            True Barrel is an informational tool only. Nothing on this site constitutes legal, financial,
             or accounting advice. Audit results are estimates based on public data and industry
             averages — they are not a formal determination of underpayment and should not be
             represented as such in any legal proceeding. If you believe you have been materially

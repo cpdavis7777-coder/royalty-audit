@@ -7,6 +7,19 @@ import { type Extraction } from "@/types/extraction";
 
 type Status = "idle" | "uploading" | "success" | "error";
 
+function friendlyError(serverMsg: string): string {
+  if (!serverMsg || serverMsg.toLowerCase().includes("internal server error")) {
+    return "We couldn't process this file. It may be low-resolution, password-protected, or in an unsupported format. Try a clear JPG or PNG scan.";
+  }
+  if (serverMsg.toLowerCase().includes("unsupported file type")) {
+    return serverMsg;
+  }
+  if (serverMsg.toLowerCase().includes("non-json") || serverMsg.toLowerCase().includes("schema")) {
+    return "We couldn't extract recognizable fields from this file. Make sure it's a royalty check stub — blurry or low-resolution files may not work.";
+  }
+  return "We couldn't process this file. Please try a clearer image or a different format.";
+}
+
 const FIELD_LABELS: Record<keyof Extraction, string> = {
   operator_name: "Operator",
   well_name: "Well Name",
@@ -52,7 +65,7 @@ export default function UploadPage() {
       const json = await res.json();
 
       if (!res.ok) {
-        setErrorMsg(json.error ?? "Extraction failed.");
+        setErrorMsg(friendlyError(json.error ?? ""));
         setStatus("error");
         return;
       }
@@ -83,7 +96,7 @@ export default function UploadPage() {
         <Badge className="mb-4 bg-primary/20 text-primary border-primary/30">Step 1 of 3</Badge>
         <h1 className="text-4xl font-bold tracking-tight mb-3">Upload your check stub</h1>
         <p className="text-muted-foreground">
-          PDF or image (JPG, PNG, HEIC). We extract the key fields using Claude Vision — your file
+          PDF or image (JPG, PNG, HEIC). We extract the key fields automatically — your file
           is never stored.
         </p>
       </div>
@@ -122,7 +135,7 @@ export default function UploadPage() {
         <Card className="bg-card border-border mb-6">
           <CardContent className="pt-6 text-center">
             <div className="text-sm text-muted-foreground animate-pulse">
-              Sending to Claude Vision · Extracting fields from <span className="text-foreground font-mono">{fileName}</span>…
+              Analyzing · Extracting fields from <span className="text-foreground font-mono">{fileName}</span>…
             </div>
           </CardContent>
         </Card>

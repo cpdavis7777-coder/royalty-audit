@@ -85,7 +85,7 @@ export default function Home() {
       <div className="mb-20">
         <h2 className="text-2xl font-bold text-center mb-4">Sample extracted fields</h2>
         <p className="text-muted-foreground text-center mb-8">
-          This is what Derrick reads from your check stub automatically.
+          This is what True Barrel reads from your check stub automatically.
         </p>
         <Card className="max-w-2xl mx-auto bg-card border-border">
           <CardContent className="p-0">
