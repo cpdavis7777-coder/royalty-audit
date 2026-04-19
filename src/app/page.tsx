@@ -21,15 +21,16 @@ const steps = [
 ];
 
 const sampleFields = [
-  { label: "Operator", value: "Permian Basin Resources LLC" },
-  { label: "Well", value: "Collins Trust 14H" },
-  { label: "API Number", value: "42-317-40812-00" },
-  { label: "Production Month", value: "August 2024" },
+  { label: "Operator", value: "Sample Operator Co." },
+  { label: "Well", value: "Example Well #1" },
+  { label: "API Number", value: "00-000-00000-00" },
+  { label: "Production Month", value: "January 2024" },
   { label: "Product", value: "Oil" },
-  { label: "Net Volume", value: "18.42 bbl" },
-  { label: "Gross Value", value: "$1,473.10" },
-  { label: "Total Deductions", value: "$147.31" },
-  { label: "Net Check", value: "$1,325.79" },
+  { label: "Net Volume", value: "100.00 bbl" },
+  { label: "Gross Value", value: "$8,500.00" },
+  { label: "Total Deductions", value: "$4,250.00" },
+  { label: "Net Check", value: "$4,250.00" },
+  { label: "Decimal Interest", value: "0.01000000" },
 ];
 
 export default function Home() {
@@ -101,6 +102,9 @@ export default function Home() {
             </table>
           </CardContent>
         </Card>
+        <p className="text-xs text-muted-foreground text-center mt-4 italic">
+          Illustrative values only. Your actual extraction will use your stub&apos;s real data.
+        </p>
       </div>
 
       {/* Pricing teaser */}
