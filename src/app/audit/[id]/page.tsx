@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { type Extraction } from "@/types/extraction";
+import { type AuditResponse, type LineItemResult } from "@/app/api/audit/route";
 
 interface StoredAudit {
   extraction: Extraction;
@@ -21,53 +22,35 @@ interface RRCResult {
   message?: string;
 }
 
-interface AuditResult {
-  eiaPrice: number | null;
-  eiaSeries: string | null;
-  priceUnit: string | null;
-  eiaPeriod: string | null;
-  royaltyVolume: number;
-  expectedGrossValue: number;
-  expectedNet: number;
-  variance: number;
-  variancePct: number;
-  narrative: string;
-}
-
-type Phase =
-  | "loading"
-  | "rrc_lookup"
-  | "awaiting_volume"
-  | "running"
-  | "done"
-  | "error";
+type Phase = "loading" | "rrc_lookup" | "awaiting_input" | "running" | "done" | "error";
 
 function StatCard({
   label,
   value,
   note,
-  highlight,
+  highlight = "default",
 }: {
   label: string;
   value: string;
   note: string;
   highlight?: "green" | "red" | "yellow" | "default";
 }) {
-  const colors: Record<string, string> = {
-    green: "text-green-400",
-    red: "text-red-400",
-    yellow: "text-yellow-400",
-    default: "text-primary",
-  };
+  const color =
+    highlight === "green"
+      ? "text-green-400"
+      : highlight === "red"
+      ? "text-red-400"
+      : highlight === "yellow"
+      ? "text-yellow-400"
+      : "text-primary";
+
   return (
     <Card className="bg-card border-border">
       <CardHeader className="pb-1">
         <p className="text-xs text-muted-foreground uppercase tracking-wide">{label}</p>
       </CardHeader>
       <CardContent>
-        <p className={`text-2xl font-bold font-mono ${colors[highlight ?? "default"]}`}>
-          {value}
-        </p>
+        <p className={`text-2xl font-bold font-mono ${color}`}>{value}</p>
         <p className="text-xs text-muted-foreground mt-1">{note}</p>
       </CardContent>
     </Card>
@@ -75,16 +58,13 @@ function StatCard({
 }
 
 function NarrativeSection({ markdown }: { markdown: string }) {
-  // Parse the markdown into sections split by ## headers
   const sections = markdown.split(/\n(?=## )/).filter(Boolean);
-
   return (
     <div className="space-y-6">
       {sections.map((section, i) => {
         const lines = section.trim().split("\n");
         const header = lines[0].replace(/^##\s*/, "");
         const body = lines.slice(1).join("\n").trim();
-
         return (
           <Card key={i} className="bg-card border-border">
             <CardHeader>
@@ -102,18 +82,79 @@ function NarrativeSection({ markdown }: { markdown: string }) {
   );
 }
 
+function DifferentialBadge({ pct }: { pct: number | null }) {
+  if (pct === null) return <span className="text-muted-foreground">—</span>;
+  const normal = pct >= 10 && pct <= 55;
+  return (
+    <span
+      className={`font-mono text-xs px-1.5 py-0.5 rounded ${
+        normal
+          ? "bg-green-500/15 text-green-400"
+          : "bg-yellow-500/15 text-yellow-400"
+      }`}
+    >
+      {pct.toFixed(1)}% below EIA{normal ? " ✓" : " — review"}
+    </span>
+  );
+}
+
+function LineItemsTable({ results }: { results: LineItemResult[] }) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[700px] text-xs">
+        <thead>
+          <tr className="border-b border-border">
+            {["Month", "Product", "Volume", "Price Paid", "EIA Benchmark", "Differential", "Net"].map(
+              (h) => (
+                <th key={h} className="px-3 py-2 text-left font-medium text-muted-foreground">
+                  {h}
+                </th>
+              )
+            )}
+          </tr>
+        </thead>
+        <tbody>
+          {results.map((r, i) => (
+            <tr key={i} className={i % 2 === 0 ? "bg-muted/20" : ""}>
+              <td className="px-3 py-2 font-mono">{r.item.production_month}</td>
+              <td className="px-3 py-2 font-mono uppercase">{r.item.product_type}</td>
+              <td className="px-3 py-2 font-mono">
+                {r.item.owner_volume} {r.item.unit}
+              </td>
+              <td className="px-3 py-2 font-mono">
+                {r.item.price_per_unit > 0
+                  ? `$${r.item.price_per_unit.toFixed(2)}`
+                  : <span className="text-muted-foreground">not shown</span>}
+              </td>
+              <td className="px-3 py-2 font-mono">
+                {r.eiaPrice ? (
+                  `$${r.eiaPrice.toFixed(2)} ${r.eiaUnit ?? ""}`
+                ) : (
+                  <span className="text-muted-foreground">N/A</span>
+                )}
+              </td>
+              <td className="px-3 py-2">
+                <DifferentialBadge pct={r.wellheadDifferentialPct} />
+              </td>
+              <td className="px-3 py-2 font-mono">${r.item.owner_net.toFixed(2)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export default function AuditPage() {
-  const params = useParams<{ id: string }>();
-  const id = params.id;
+  const { id } = useParams<{ id: string }>();
 
   const [phase, setPhase] = useState<Phase>("loading");
   const [stored, setStored] = useState<StoredAudit | null>(null);
   const [rrcResult, setRRCResult] = useState<RRCResult | null>(null);
   const [manualVolume, setManualVolume] = useState<string>("");
-  const [auditResult, setAuditResult] = useState<AuditResult | null>(null);
+  const [auditResult, setAuditResult] = useState<AuditResponse | null>(null);
   const [errorMsg, setErrorMsg] = useState<string>("");
 
-  // Load extraction from localStorage and kick off RRC lookup
   useEffect(() => {
     const raw = localStorage.getItem(`audit_${id}`);
     if (!raw) {
@@ -134,7 +175,9 @@ export default function AuditPage() {
     setStored(parsed);
     setPhase("rrc_lookup");
 
+    // Use first line item's month and fields for RRC lookup
     const { extraction } = parsed;
+    const firstItem = extraction.line_items[0];
     fetch("/api/rrc-lookup", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -142,7 +185,7 @@ export default function AuditPage() {
         operator_name: extraction.operator_name,
         well_name: extraction.well_name,
         api_number: extraction.api_number,
-        production_month: extraction.production_month,
+        production_month: firstItem?.production_month ?? "",
       }),
     })
       .then((r) => r.json())
@@ -151,23 +194,16 @@ export default function AuditPage() {
         if (result.status === "found" && result.volume) {
           setManualVolume(String(result.volume));
         }
-        setPhase("awaiting_volume");
+        setPhase("awaiting_input");
       })
       .catch(() => {
-        setRRCResult({
-          status: "manual",
-          label: "Manually entered",
-          message: "RRC lookup failed. Please enter production volume manually.",
-        });
-        setPhase("awaiting_volume");
+        setRRCResult({ status: "manual", label: "Manually entered", message: "RRC lookup failed." });
+        setPhase("awaiting_input");
       });
   }, [id]);
 
   async function runAudit() {
     if (!stored) return;
-    const volume = parseFloat(manualVolume);
-    if (isNaN(volume) || volume <= 0) return;
-
     setPhase("running");
 
     try {
@@ -176,17 +212,15 @@ export default function AuditPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           extraction: stored.extraction,
-          grossProductionVolume: volume,
-          volumeSource: rrcResult?.status === "found" ? rrcResult.source ?? "Texas RRC" : "Manually entered",
+          grossProductionVolume: parseFloat(manualVolume) || 0,
+          volumeSource:
+            rrcResult?.status === "found" ? rrcResult.source ?? "Texas RRC" : "Manually entered",
         }),
       });
 
       const json = await res.json();
-      if (!res.ok) {
-        throw new Error(json.detail ?? json.error ?? "Audit API failed");
-      }
-
-      setAuditResult(json as AuditResult);
+      if (!res.ok) throw new Error(json.detail ?? json.error ?? "Audit API failed");
+      setAuditResult(json as AuditResponse);
       setPhase("done");
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : "Audit failed. Please try again.");
@@ -196,20 +230,10 @@ export default function AuditPage() {
 
   const extraction = stored?.extraction;
 
-  // Determine variance highlight color
-  function varianceColor(pct: number): "green" | "red" | "yellow" {
-    if (Math.abs(pct) <= 5) return "green";
-    if (pct < -5) return "red";
-    return "yellow";
-  }
-
   return (
-    <div className="max-w-4xl mx-auto px-6 py-16">
+    <div className="max-w-5xl mx-auto px-6 py-16">
       <div className="mb-8">
-        <Link
-          href="/upload"
-          className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-        >
+        <Link href="/upload" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
           ← New audit
         </Link>
       </div>
@@ -222,18 +246,19 @@ export default function AuditPage() {
         {stored && (
           <p className="text-muted-foreground text-sm">
             {stored.extraction.well_name || stored.extraction.operator_name || stored.fileName}
-            {" · "}
-            {stored.extraction.production_month}
+            {stored.extraction.line_items.length > 0 && (
+              <> · {stored.extraction.line_items.length} line item{stored.extraction.line_items.length !== 1 ? "s" : ""}</>
+            )}
           </p>
         )}
       </div>
 
-      {/* Loading / RRC lookup */}
+      {/* Loading */}
       {(phase === "loading" || phase === "rrc_lookup") && (
         <Card className="bg-card border-border mb-6">
           <CardContent className="pt-6 text-center">
             <p className="text-sm text-muted-foreground animate-pulse">
-              {phase === "loading" ? "Loading audit data…" : "Looking up production in Texas RRC…"}
+              {phase === "loading" ? "Loading audit data…" : "Checking Texas RRC production records…"}
             </p>
           </CardContent>
         </Card>
@@ -245,53 +270,71 @@ export default function AuditPage() {
           <CardContent className="pt-6">
             <p className="text-sm text-destructive font-medium">Something went wrong</p>
             <p className="text-sm text-muted-foreground mt-1">{errorMsg}</p>
-            <Link
-              href="/upload"
-              className="mt-3 inline-block text-sm text-primary hover:underline"
-            >
+            <Link href="/upload" className="mt-3 inline-block text-sm text-primary hover:underline">
               Start over →
             </Link>
           </CardContent>
         </Card>
       )}
 
-      {/* Volume entry + audit trigger */}
-      {phase === "awaiting_volume" && extraction && rrcResult && (
+      {/* Awaiting input */}
+      {phase === "awaiting_input" && extraction && rrcResult && (
         <div className="space-y-6">
-          {/* Extracted fields summary */}
+          {/* Stub line items summary */}
           <Card className="bg-card border-border">
-            <CardHeader>
-              <CardTitle className="text-base">Check stub summary</CardTitle>
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base">Check stub line items</CardTitle>
+                <div className="flex gap-2 text-xs text-muted-foreground">
+                  <span>{extraction.operator_name}</span>
+                  <span>·</span>
+                  <span className="font-mono">${extraction.net_check_amount.toFixed(2)} total</span>
+                </div>
+              </div>
             </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm">
-                {[
-                  ["Operator", extraction.operator_name],
-                  ["Well", extraction.well_name],
-                  ["Product", `${extraction.product_type.toUpperCase()} (${extraction.unit})`],
-                  ["Decimal Interest", `${(extraction.decimal_interest * 100).toFixed(4)}%`],
-                  ["Net Volume (stub)", `${extraction.net_volume} ${extraction.unit}`],
-                  ["Net Check Amount", `$${extraction.net_check_amount.toFixed(2)}`],
-                ].map(([label, value]) => (
-                  <div key={label} className="flex justify-between border-b border-border/40 py-1">
-                    <span className="text-muted-foreground">{label}</span>
-                    <span className="font-mono">{value}</span>
-                  </div>
-                ))}
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[560px] text-xs">
+                  <thead>
+                    <tr className="border-b border-border">
+                      {["Month", "Product", "Volume", "Price/Unit", "Gross", "Deductions", "Taxes", "Net"].map((h) => (
+                        <th key={h} className="px-3 py-2 text-left font-medium text-muted-foreground">
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {extraction.line_items.map((item, i) => (
+                      <tr key={i} className={i % 2 === 0 ? "bg-muted/20" : ""}>
+                        <td className="px-3 py-2 font-mono">{item.production_month}</td>
+                        <td className="px-3 py-2 font-mono uppercase">{item.product_type}</td>
+                        <td className="px-3 py-2 font-mono">{item.owner_volume} {item.unit}</td>
+                        <td className="px-3 py-2 font-mono">
+                          {item.price_per_unit > 0 ? `$${item.price_per_unit.toFixed(2)}` : "—"}
+                        </td>
+                        <td className="px-3 py-2 font-mono">${item.owner_gross.toFixed(2)}</td>
+                        <td className="px-3 py-2 font-mono">${item.owner_deductions.toFixed(2)}</td>
+                        <td className="px-3 py-2 font-mono">${item.taxes.toFixed(2)}</td>
+                        <td className="px-3 py-2 font-mono">${item.owner_net.toFixed(2)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </CardContent>
           </Card>
 
-          {/* RRC result / manual entry */}
+          {/* RRC + run audit */}
           <Card className="bg-card border-border">
-            <CardHeader>
+            <CardHeader className="pb-2">
               <div className="flex items-center gap-3">
-                <CardTitle className="text-base">Production volume</CardTitle>
+                <CardTitle className="text-base">Verify production volume (optional)</CardTitle>
                 <Badge
                   className={
                     rrcResult.status === "found"
                       ? "bg-green-500/20 text-green-400 border-green-500/30"
-                      : "bg-yellow-500/20 text-yellow-400 border-yellow-500/30"
+                      : "bg-muted/40 text-muted-foreground border-border"
                   }
                 >
                   {rrcResult.label}
@@ -299,22 +342,22 @@ export default function AuditPage() {
               </div>
             </CardHeader>
             <CardContent>
-              {rrcResult.status === "manual" && rrcResult.message && (
-                <p className="text-sm text-muted-foreground mb-4">{rrcResult.message}</p>
+              {rrcResult.message && (
+                <p className="text-xs text-muted-foreground mb-3">{rrcResult.message}</p>
               )}
-              {rrcResult.status === "found" && (
-                <p className="text-sm text-muted-foreground mb-4">
-                  Found{" "}
+              {rrcResult.status === "found" && rrcResult.volume && (
+                <p className="text-xs text-muted-foreground mb-3">
+                  RRC records show{" "}
                   <span className="text-foreground font-mono font-semibold">
-                    {rrcResult.volume?.toLocaleString()} {rrcResult.unit}
+                    {rrcResult.volume.toLocaleString()} {rrcResult.unit}
                   </span>{" "}
-                  gross production for this well from the Texas RRC. You can adjust below if needed.
+                  gross production. Adjust below if needed.
                 </p>
               )}
               <div className="flex gap-3 items-end">
-                <div className="flex-1">
+                <div className="flex-1 max-w-xs">
                   <label className="text-xs text-muted-foreground block mb-1">
-                    Gross production volume ({extraction.unit})
+                    Gross production volume for primary month (optional)
                   </label>
                   <input
                     type="number"
@@ -322,22 +365,17 @@ export default function AuditPage() {
                     min="0"
                     value={manualVolume}
                     onChange={(e) => setManualVolume(e.target.value)}
-                    placeholder={`Enter gross ${extraction.unit === "bbl" ? "barrels" : "Mcf"} for ${extraction.production_month}`}
+                    placeholder="Leave blank to use stub volumes"
                     className="bg-background border border-input rounded px-3 py-2 text-sm font-mono w-full focus:outline-none focus:ring-1 focus:ring-primary"
                   />
                 </div>
                 <button
                   onClick={runAudit}
-                  disabled={!manualVolume || parseFloat(manualVolume) <= 0}
-                  className="bg-primary text-primary-foreground font-medium px-6 py-2 rounded-md text-sm hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="bg-primary text-primary-foreground font-medium px-6 py-2 rounded-md text-sm hover:bg-primary/90 transition-colors"
                 >
                   Run audit →
                 </button>
               </div>
-              <p className="text-xs text-muted-foreground mt-3">
-                Enter the <em>gross</em> production volume for the lease (before your royalty fraction is
-                applied). Find this on your division order or the operator&apos;s run ticket.
-              </p>
             </CardContent>
           </Card>
         </div>
@@ -349,62 +387,49 @@ export default function AuditPage() {
           <CardContent className="pt-6 text-center space-y-2">
             <p className="text-sm font-medium animate-pulse">Running audit…</p>
             <p className="text-xs text-muted-foreground">
-              Fetching EIA benchmark price · Calculating variance · Generating report
+              Fetching EIA benchmark prices · Checking stub math · Generating report
             </p>
           </CardContent>
         </Card>
       )}
 
-      {/* Done — full report */}
+      {/* Done */}
       {phase === "done" && auditResult && extraction && (
         <div className="space-y-8">
           {/* Stat cards */}
           <div className="grid md:grid-cols-3 gap-4">
             <StatCard
-              label="Expected royalty"
-              value={`$${auditResult.expectedNet.toFixed(2)}`}
-              note={
-                auditResult.eiaPrice
-                  ? `Based on EIA ${auditResult.eiaPeriod} price ($${auditResult.eiaPrice.toFixed(2)} ${auditResult.priceUnit})`
-                  : "Based on stub gross value"
-              }
-              highlight="default"
+              label="Stub total"
+              value={`$${auditResult.sumOwnerNet.toFixed(2)}`}
+              note="Sum of all line item net amounts"
             />
             <StatCard
-              label="Actual received"
+              label="Check amount"
               value={`$${extraction.net_check_amount.toFixed(2)}`}
-              note="From your check stub"
-              highlight="default"
+              note="Printed on check stub"
             />
             <StatCard
-              label="Variance"
-              value={`${auditResult.variance >= 0 ? "+" : ""}$${auditResult.variance.toFixed(2)}`}
-              note={`${auditResult.variancePct >= 0 ? "+" : ""}${auditResult.variancePct.toFixed(1)}% · ${Math.abs(auditResult.variancePct) <= 5 ? "Within normal range" : auditResult.variance < 0 ? "Possible underpayment" : "Possible overpayment"}`}
-              highlight={varianceColor(auditResult.variancePct)}
+              label="Math check"
+              value={auditResult.mathOk ? "Passes ✓" : `Off by $${Math.abs(auditResult.mathVariance).toFixed(2)}`}
+              note={
+                auditResult.mathOk
+                  ? "Stub totals reconcile"
+                  : "Possible missing line item or extraction imprecision"
+              }
+              highlight={auditResult.mathOk ? "green" : "yellow"}
             />
           </div>
 
-          {/* Data sources */}
-          <Card className="bg-muted/20 border-border">
-            <CardContent className="pt-4 pb-4">
-              <div className="flex flex-wrap gap-6 text-xs text-muted-foreground">
-                <span>
-                  <span className="text-foreground font-medium">Volume source: </span>
-                  {rrcResult?.status === "found" ? rrcResult.source : "Manually entered"} ·{" "}
-                  {parseFloat(manualVolume).toLocaleString()} {extraction.unit} gross
-                </span>
-                {auditResult.eiaPrice && (
-                  <span>
-                    <span className="text-foreground font-medium">Price: </span>
-                    EIA {auditResult.eiaSeries} ({auditResult.eiaPeriod}) ·{" "}
-                    ${auditResult.eiaPrice.toFixed(2)} {auditResult.priceUnit}
-                  </span>
-                )}
-                <span>
-                  <span className="text-foreground font-medium">Royalty volume: </span>
-                  {auditResult.royaltyVolume.toFixed(4)} {extraction.unit}
-                </span>
-              </div>
+          {/* Price comparison table */}
+          <Card className="bg-card border-border">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Price analysis by line item</CardTitle>
+              <p className="text-xs text-muted-foreground mt-1">
+                Wellhead prices are always below exchange benchmarks. A 20–45% discount to WTI or Henry Hub is normal.
+              </p>
+            </CardHeader>
+            <CardContent className="p-0">
+              <LineItemsTable results={auditResult.lineItemResults} />
             </CardContent>
           </Card>
 
