@@ -96,13 +96,16 @@ async function generateNarrative(
   const lineRows = results
     .map((r) => {
       const stub = r.item;
-      const price = stub.price_per_unit > 0 ? `$${stub.price_per_unit.toFixed(2)}` : "not shown";
-      const eia = r.eiaPrice ? `$${r.eiaPrice.toFixed(2)} ${r.eiaUnit ?? ""}` : "N/A";
-      const diff =
-        r.wellheadDifferentialPct !== null
-          ? `${r.wellheadDifferentialPct.toFixed(1)}% below benchmark`
-          : "—";
-      return `  • ${stub.production_month} ${stub.product_type.toUpperCase()} | ${stub.owner_volume} ${stub.unit} | price: ${price} | EIA benchmark: ${eia} | differential: ${diff} | owner_net: $${stub.owner_net.toFixed(2)}`;
+      const stubPrice = stub.price_per_unit > 0 ? `$${stub.price_per_unit.toFixed(2)}/${stub.unit}` : "not shown on stub";
+      let eiaContext = "EIA N/A";
+      if (r.eiaPrice && stub.price_per_unit > 0) {
+        const dollarDiff = (r.eiaPrice - stub.price_per_unit).toFixed(2);
+        eiaContext = `EIA ${r.eiaPeriod}: $${r.eiaPrice.toFixed(2)} ${r.eiaUnit ?? ""} — operator paid $${dollarDiff}/${stub.unit} less (${r.wellheadDifferentialPct!.toFixed(1)}% wellhead discount)`;
+      } else if (r.eiaPrice) {
+        eiaContext = `EIA ${r.eiaPeriod}: $${r.eiaPrice.toFixed(2)} ${r.eiaUnit ?? ""} (stub price not shown, cannot compute differential)`;
+      }
+      const lineOk = r.lineItemMathOk ? "line math OK" : `line math off by $${Math.abs(r.lineItemMathVariance).toFixed(2)}`;
+      return `  • ${stub.production_month} ${stub.product_type.toUpperCase()} | ${stub.owner_volume} ${stub.unit} | stub price: ${stubPrice} | ${eiaContext} | gross: $${stub.owner_gross.toFixed(2)} | deduc: $${stub.owner_deductions.toFixed(2)} | taxes: $${stub.taxes.toFixed(2)} | net: $${stub.owner_net.toFixed(2)} | ${lineOk}`;
     })
     .join("\n");
 

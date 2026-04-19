@@ -82,18 +82,29 @@ function NarrativeSection({ markdown }: { markdown: string }) {
   );
 }
 
-function DifferentialBadge({ pct }: { pct: number | null }) {
-  if (pct === null) return <span className="text-muted-foreground">—</span>;
+function DifferentialBadge({
+  pct,
+  stubPrice,
+  eiaPrice,
+  unit,
+}: {
+  pct: number | null;
+  stubPrice: number;
+  eiaPrice: number | null;
+  unit: string;
+}) {
+  if (pct === null || !eiaPrice || stubPrice <= 0)
+    return <span className="text-muted-foreground">—</span>;
   const normal = pct >= 10 && pct <= 55;
+  const dollarDiff = (eiaPrice - stubPrice).toFixed(2);
   return (
     <span
-      className={`font-mono text-xs px-1.5 py-0.5 rounded ${
-        normal
-          ? "bg-green-500/15 text-green-400"
-          : "bg-yellow-500/15 text-yellow-400"
+      title={`Operator paid $${dollarDiff}/${unit} below EIA benchmark — wellhead discounts of 20–45% are normal`}
+      className={`font-mono text-xs px-1.5 py-0.5 rounded cursor-help ${
+        normal ? "bg-green-500/15 text-green-400" : "bg-yellow-500/15 text-yellow-400"
       }`}
     >
-      {pct.toFixed(1)}% below EIA{normal ? " ✓" : " — review"}
+      −${dollarDiff}/{unit} ({pct.toFixed(1)}%){normal ? " ✓" : " — review"}
     </span>
   );
 }
@@ -134,7 +145,12 @@ function LineItemsTable({ results }: { results: LineItemResult[] }) {
                 )}
               </td>
               <td className="px-3 py-2">
-                <DifferentialBadge pct={r.wellheadDifferentialPct} />
+                <DifferentialBadge
+                  pct={r.wellheadDifferentialPct}
+                  stubPrice={r.item.price_per_unit}
+                  eiaPrice={r.eiaPrice}
+                  unit={r.item.unit}
+                />
               </td>
               <td className="px-3 py-2 font-mono">${r.item.owner_net.toFixed(2)}</td>
             </tr>
